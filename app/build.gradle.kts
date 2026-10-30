@@ -19,10 +19,29 @@ android {
 
     }
 
+    // Signing stays out of the repository: the keystore, its passwords and the alias
+    // all come from the environment. With no keystore configured the release build
+    // type is simply left unsigned, so local assembleDebug is unaffected.
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("NEXTEP_KEYSTORE_PATH")
+            if (!keystorePath.isNullOrBlank()) {
+                storeFile = file(keystorePath)
+                storeType = System.getenv("NEXTEP_KEYSTORE_TYPE") ?: "jks"
+                storePassword = System.getenv("NEXTEP_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("NEXTEP_KEY_ALIAS")
+                keyPassword = System.getenv("NEXTEP_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             optimization {
                 enable = false
+            }
+            if (!System.getenv("NEXTEP_KEYSTORE_PATH").isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("release")
             }
         }
     }

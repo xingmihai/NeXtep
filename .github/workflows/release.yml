@@ -1,0 +1,232 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: "Version name for this build (e.g. 2.1.0-plq110)"
+        required: false
+        default: ""
+
+# C.UTF-8 is required, not cosmetic: the signing alias is non-ASCII. Under a POSIX
+# locale Java decodes environment variables as ASCII and the alias lookup fails with
+# "Alias <?????????> does not exist".
+env:
+  LANG: C.UTF-8
+  LC_ALL: C.UTF-8
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # sdkmanager predates JDK 21 and dies with NoClassDefFoundError when run on it.
+      # Install the SDK under JDK 17 first, then switch to 21 for Gradle and AGP.
+      - name: Set up JDK 17 for sdkmanager
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        id: sdk
+        run: |
+          set -uo pipefail
+          {
+            # The preinstalled SDK on GitHub runners is root-owned: the runner user can
+            # neither chmod sdkmanager nor write into the tree. Everything that touches
+            # it has to go through sudo, and every read-only probe needs || true because
+            # the step runs under bash -e.
+            SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+            echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+            echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+            echo "SDK root: $SDK : $(stat -c '%A %U' "$SDK" 2>&1)"
+            echo "--- platforms ---";      ls "$SDK/platforms"    2>&1 || true
+            echo "--- build-tools ---";    ls "$SDK/build-tools"  2>&1 || true
+            echo "--- cmdline-tools ---";  ls "$SDK/cmdline-tools" 2>&1 || true
+
+            SM=""
+            for candidate in "$SDK"/cmdline-tools/*/bin/sdkmanager; do
+              [ -f "$candidate" ] && SM="$candidate"
+            done
+            echo "sdkmanager: ${SM:-<none>} $(stat -c '%A %U' "$SM" 2>/dev/null || true)"
+            if [ -z "$SM" ]; then
+              echo "no sdkmanager found on the image"
+              exit 1
+            fi
+            # sdkmanager is a shell script; invoking it through bash avoids needing +x.
+            RUN=(sudo -n env JAVA_HOME="$JAVA_HOME" bash "$SM" --sdk_root="$SDK")
+            echo "--- licenses ---"
+            yes | "${RUN[@]}" --licenses 2>&1 | tail -3 || true
+            echo "--- install ---"
+            "${RUN[@]}" --install "platform-tools" "platforms;android-36" \
+              "build-tools;36.0.0" 2>&1
+            echo "install exit: $?"
+            echo "--- platforms after ---";   ls "$SDK/platforms"   2>&1 || true
+            echo "--- build-tools after ---"; ls "$SDK/build-tools" 2>&1 || true
+          } 2>&1 | tee "$RUNNER_TEMP/sdk.log"
+          exit "${PIPESTATUS[0]}"
+
+      - name: Set up JDK 21 for Gradle
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Decode signing keystore
+        run: |
+          mkdir -p "$RUNNER_TEMP/signing"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/signing/nextep.jks"
+          # Fail here rather than mid-package if the secret is truncated or corrupt.
+          keytool -list -keystore "$RUNNER_TEMP/signing/nextep.jks" \
+            -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null
+          echo "Keystore decoded and alias verified"
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+
+      - name: Build release APK
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/build.log"
+          exit "${PIPESTATUS[0]}"
+        env:
+          NEXTEP_KEYSTORE_PATH: ${{ runner.temp }}/signing/nextep.jks
+          NEXTEP_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          NEXTEP_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          NEXTEP_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Publish compile errors
+        if: steps.build.outcome == 'failure'
+        run: |
+          {
+            echo "=== Kotlin errors ==="
+            grep -E "^e: |^w: .*error|error:" "$RUNNER_TEMP/build.log" | head -40
+            echo ""
+            echo "=== tail ==="
+            tail -40 "$RUNNER_TEMP/build.log"
+          } > "$RUNNER_TEMP/diag.txt" 2>&1
+          cat "$RUNNER_TEMP/diag.txt"
+          B64=$(base64 -w 0 < "$RUNNER_TEMP/diag.txt")
+          SHA=$(curl -sS -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/contents/ci-diagnostics.txt?ref=ci-logs" \
+            | python3 -c "import sys,json;print(json.load(sys.stdin).get('sha',''))" 2>/dev/null || echo "")
+          if [ -n "$SHA" ]; then
+            curl -sS -X PUT -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/contents/ci-diagnostics.txt" \
+              -d "{\"message\":\"CI diagnostics\",\"branch\":\"ci-logs\",\"sha\":\"$SHA\",\"content\":\"$B64\"}" > /dev/null
+          else
+            curl -sS -X PUT -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/contents/ci-diagnostics.txt" \
+              -d "{\"message\":\"CI diagnostics\",\"branch\":\"ci-logs\",\"content\":\"$B64\"}" > /dev/null
+          fi
+
+      - name: Fail if the build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1
+
+      - name: Verify APK signature
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+          echo "APK: $APK_PATH"
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --verbose --print-certs "$APK_PATH"
+          else
+            echo "apksigner not found; listing signature files instead"
+            unzip -l "$APK_PATH" | grep 'META-INF/'
+          fi
+
+      # GitHub always zips build artifacts. Release assets are served as the file
+      # itself, so the APK is published there instead: a tag push gets a real
+      # release, a manual run updates the rolling "nightly" prerelease.
+      - name: Resolve release target
+        id: target
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "notes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=nightly" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "notes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect APK
+        id: collect
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+          APK_NAME="NeXtep-${VERSION_NAME:-${GITHUB_REF_NAME}}.apk"
+          mkdir -p "$RUNNER_TEMP/out"
+          cp "$APK_PATH" "$RUNNER_TEMP/out/$APK_NAME"
+          ls -la "$RUNNER_TEMP/out"
+          echo "path=$RUNNER_TEMP/out/$APK_NAME" >> "$GITHUB_OUTPUT"
+          echo "name=$APK_NAME" >> "$GITHUB_OUTPUT"
+        env:
+          VERSION_NAME: ${{ github.event.inputs.version_name }}
+
+      - name: Move rolling nightly tag
+        if: steps.target.outputs.tag == 'nightly'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f nightly HEAD
+          git push -f origin refs/tags/nightly
+
+      - name: Drop previous asset with the same name
+        run: |
+          TAG="${{ steps.target.outputs.tag }}"
+          NAME="${{ steps.collect.outputs.name }}"
+          REL_ID=$(curl -sS -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+            | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null || true)
+          [ -z "$REL_ID" ] && echo "no existing release for $TAG" && exit 0
+          ASSET_ID=$(curl -sS -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$REL_ID/assets?per_page=100" \
+            | python3 -c "import sys,json,os;print(next((str(a['id']) for a in json.load(sys.stdin) if a['name']==os.environ['NAME']),''))" 2>/dev/null || true)
+          if [ -n "$ASSET_ID" ]; then
+            curl -sS -X DELETE -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$ASSET_ID" > /dev/null
+            echo "removed old asset $NAME"
+          else
+            echo "no previous asset named $NAME"
+          fi
+        env:
+          NAME: ${{ steps.collect.outputs.name }}
+
+      - name: Publish APK as a release asset
+        id: publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.target.outputs.tag }}
+          name: ${{ steps.target.outputs.tag }}
+          prerelease: ${{ steps.target.outputs.prerelease == 'true' }}
+          generate_release_notes: ${{ steps.target.outputs.notes == 'true' }}
+          files: ${{ steps.collect.outputs.path }}
+
+      - name: Report download URL
+        run: |
+          echo "### APK ready" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "[${{ steps.collect.outputs.name }}](https://github.com/$GITHUB_REPOSITORY/releases/download/${{ steps.target.outputs.tag }}/${{ steps.collect.outputs.name }})" >> "$GITHUB_STEP_SUMMARY"

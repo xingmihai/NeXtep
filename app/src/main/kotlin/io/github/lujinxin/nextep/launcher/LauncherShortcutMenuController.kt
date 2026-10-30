@@ -74,11 +74,19 @@ internal object LauncherShortcutMenuController {
         return hasMenuRoot(content)
     }
 
+    /** Accept renamed COUI menu roots: match the simple name, not the full symbol.
+     *  An unpublished menu keeps the status-bar inset and every row shifts down. */
     private fun hasMenuRoot(view: View): Boolean {
-        if (generateSequence(view.javaClass as Class<*>?) { it.superclass }
-                .any { it.name == "com.coui.appcompat.poplist.COUIPopupMenuRootView" }) return true
+        if (isMenuRootClass(view.javaClass)) return true
         return view is ViewGroup && (0 until view.childCount).any { hasMenuRoot(view.getChildAt(it)) }
     }
+
+    private fun isMenuRootClass(target: Class<*>): Boolean =
+        generateSequence(target) { it.superclass }.any { candidate ->
+            candidate.name == MENU_ROOT_CLASS ||
+                (candidate.name.startsWith("com.coui.appcompat.poplist.") &&
+                    candidate.simpleName.contains("PopupMenuRoot"))
+        }
 
     private fun fitWindow(params: WindowManager.LayoutParams) {
         params.type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -100,4 +108,5 @@ internal object LauncherShortcutMenuController {
     }
 
     private const val WINDOW_TITLE = "NeXtepLauncherMenu"
+    private const val MENU_ROOT_CLASS = "com.coui.appcompat.poplist.COUIPopupMenuRootView"
 }
