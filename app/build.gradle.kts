@@ -38,7 +38,7 @@ android {
     buildTypes {
         release {
             optimization {
-                enable = false
+                enable = true
             }
             if (!System.getenv("NEXTEP_KEYSTORE_PATH").isNullOrBlank()) {
                 signingConfig = signingConfigs.getByName("release")
