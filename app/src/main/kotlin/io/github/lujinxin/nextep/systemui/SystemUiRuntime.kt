@@ -263,6 +263,7 @@ object SystemUiRuntime {
                 }
             }.onFailure { NeXtepLog.warn("energy_monitor", "Runtime snapshot unavailable", it) }
             Handler(Looper.getMainLooper()).post {
+                SystemUiBottomCornerGestureMonitor.install(applicationContext)
                 SystemServerWorkspaceBridge.publish(applicationContext, false)
                 WorkspaceStateBridge.requestInactiveFromSystemUi(applicationContext)
                 // OWN_DISPLAY_GROUP virtual screens can keep the device globally interactive
@@ -400,6 +401,7 @@ object SystemUiRuntime {
 
     private val lifecycleReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            SystemUiBottomCornerGestureMonitor.reset()
             if (intent.action == Intent.ACTION_USER_PRESENT) refreshWorkspaceConfig()
             if (intent.action == Intent.ACTION_SCREEN_OFF) TaskSurfaceCompat.finishWorkspaceExitAnimations()
             if (!::workspaceController.isInitialized || !workspaceController.isActive()) return
