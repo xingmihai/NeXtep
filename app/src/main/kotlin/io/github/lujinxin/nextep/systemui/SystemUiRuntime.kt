@@ -322,8 +322,19 @@ object SystemUiRuntime {
         }
     }
 
-    fun toggleWorkspaceFromGesture() {
-        if (!isStatusBarGestureEnabled() || !::workspaceController.isInitialized) return
+    fun toggleWorkspaceFromGesture() = toggleWorkspace(isStatusBarGestureEnabled())
+
+    fun toggleWorkspaceFromBottomCornerGesture() = toggleWorkspace(isBottomCornerGestureEnabled())
+
+    /** The gate belongs to the gesture that triggered the toggle, not to one shared switch,
+     *  so each entry point can be turned off without disabling the others. */
+    private fun toggleWorkspace(enabled: Boolean) {
+        if (!enabled) {
+            // A confirmed gesture that goes nowhere is otherwise invisible in the log.
+            NeXtepLog.info("workspace_toggle", "Skipped: entry point disabled or controller unready")
+            return
+        }
+        if (!::workspaceController.isInitialized) return
         val target = !workspaceController.isActive()
         if (target && isKeyguardLocked(applicationContext)) return
         if (workspaceController.setActive(target)) {

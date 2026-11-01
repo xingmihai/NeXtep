@@ -133,7 +133,7 @@ object SystemUiBottomCornerGestureMonitor {
                                     mainHandler.post {
                                         runCatching {
                                             if (generation == confirmedGeneration && canActivate()) {
-                                                SystemUiRuntime.toggleWorkspaceFromGesture()
+                                                SystemUiRuntime.toggleWorkspaceFromBottomCornerGesture()
                                             }
                                         }.onFailure { error ->
                                             NeXtepLog.warn(
