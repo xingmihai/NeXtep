@@ -17,6 +17,7 @@ class SettingsRepository(private val context: Context) {
         val textSizeSp: Int,
         val textBold: Boolean,
         val statusBarGestureEnabled: Boolean,
+        val bottomCornerGestureEnabled: Boolean,
         val slotBackgroundSwipeEnabled: Boolean,
         val autoMinimizeMainOnTopAppSwitch: Boolean,
         val navigationButtonsEnabled: Boolean,
@@ -45,6 +46,7 @@ class SettingsRepository(private val context: Context) {
             .coerceIn(TopTextStyle.MIN_SIZE_SP, TopTextStyle.MAX_SIZE_SP),
         textBold = preferences.getBoolean("top_text_bold", false),
         statusBarGestureEnabled = preferences.getBoolean("status_bar_gesture_enabled", true),
+        bottomCornerGestureEnabled = preferences.getBoolean(KEY_BOTTOM_CORNER_GESTURE_ENABLED, true),
         slotBackgroundSwipeEnabled = preferences.getBoolean("slot_background_swipe_enabled", true),
         autoMinimizeMainOnTopAppSwitch = preferences.getBoolean("auto_minimize_main_on_top_app_switch", false),
         navigationButtonsEnabled = preferences.getBoolean("navigation_buttons_enabled", false),
@@ -86,6 +88,11 @@ class SettingsRepository(private val context: Context) {
 
     fun setStatusBarGestureEnabled(enabled: Boolean) {
         preferences.edit().putBoolean("status_bar_gesture_enabled", enabled).apply()
+        notifyTopContentChanged()
+    }
+
+    fun setBottomCornerGestureEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean(KEY_BOTTOM_CORNER_GESTURE_ENABLED, enabled).apply()
         notifyTopContentChanged()
     }
 
@@ -178,6 +185,7 @@ class SettingsRepository(private val context: Context) {
         const val KEY_MANUAL_APP_ORDER = "manual_app_order"
         const val KEY_SWAP_ANIMATION_DURATION_MS = "window_swap_animation_duration_ms"
         const val KEY_FOUR_FINGER_GESTURE_ENABLED = "four_finger_gesture_enabled"
+        const val KEY_BOTTOM_CORNER_GESTURE_ENABLED = "bottom_corner_gesture_enabled"
         const val KEY_FOUR_FINGER_GESTURE_BLOCK_GAMES = "four_finger_gesture_block_games"
         const val KEY_FOUR_FINGER_GESTURE_BLACKLIST = "four_finger_gesture_blacklist"
         const val DEFAULT_TOP_TITLE = ""

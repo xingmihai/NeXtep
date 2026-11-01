@@ -85,6 +85,7 @@ object SystemUiRuntime {
             NeXtepLog.info(
                 "workspace_config",
                 "Applied statusBarGesture=${workspaceConfig.statusBarGestureEnabled} " +
+                    "bottomCornerGesture=${workspaceConfig.bottomCornerGestureEnabled} " +
                     "slotBackgroundSwipe=${workspaceConfig.slotBackgroundSwipeEnabled} " +
                     "autoMinimizeMain=${workspaceConfig.autoMinimizeMainOnTopAppSwitch} " +
                     "navigationButtons=${workspaceConfig.navigationButtonsEnabled}",
@@ -93,6 +94,9 @@ object SystemUiRuntime {
     }
 
     fun isStatusBarGestureEnabled(): Boolean = workspaceConfigReady && workspaceConfig.statusBarGestureEnabled
+
+    fun isBottomCornerGestureEnabled(): Boolean =
+        workspaceConfigReady && workspaceConfig.bottomCornerGestureEnabled
 
     fun shouldAutoMinimizeMainOnTopAppSwitch(): Boolean = workspaceConfig.autoMinimizeMainOnTopAppSwitch
 

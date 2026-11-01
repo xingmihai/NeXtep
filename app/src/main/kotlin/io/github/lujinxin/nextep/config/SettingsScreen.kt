@@ -152,6 +152,14 @@ object SettingsScreen {
                     addView(settingDivider(activity))
                     addView(settingSwitchRow(
                         activity,
+                        activity.getString(R.string.bottom_corner_gesture_title),
+                        activity.getString(R.string.bottom_corner_gesture_summary),
+                        settings.bottomCornerGestureEnabled,
+                        repository::setBottomCornerGestureEnabled,
+                    ), matchWidth())
+                    addView(settingDivider(activity))
+                    addView(settingSwitchRow(
+                        activity,
                         activity.getString(R.string.four_finger_gesture_title),
                         activity.getString(R.string.four_finger_gesture_summary),
                         settings.fourFingerGestureEnabled,

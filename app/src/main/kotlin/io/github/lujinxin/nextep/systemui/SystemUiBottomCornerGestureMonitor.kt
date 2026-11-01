@@ -111,7 +111,7 @@ object SystemUiBottomCornerGestureMonitor {
                             val event = args?.firstOrNull() as? MotionEvent
                             if (event == null ||
                                 !event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN) ||
-                                !SystemUiRuntime.isStatusBarGestureEnabled() ||
+                                !SystemUiRuntime.isBottomCornerGestureEnabled() ||
                                 (event.actionMasked != MotionEvent.ACTION_DOWN && !detector.isObserving)
                             ) {
                                 detector.reset()

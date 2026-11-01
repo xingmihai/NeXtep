@@ -9,4 +9,6 @@
     <string name="four_finger_blacklist_count">%1$d selected</string>
     <string name="four_finger_blacklist_clear">Clear</string>
     <string name="four_finger_blacklist_unavailable_app">Unavailable app</string>
+    <string name="bottom_corner_gesture_title">Bottom-corner gesture</string>
+    <string name="bottom_corner_gesture_summary">Swipe diagonally inward and up from either bottom corner, about 45 degrees, to open or close the workspace.</string>
 </resources>

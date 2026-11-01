@@ -9,4 +9,6 @@
     <string name="four_finger_blacklist_count">已选择 %1$d 个</string>
     <string name="four_finger_blacklist_clear">清空</string>
     <string name="four_finger_blacklist_unavailable_app">暂不可用的应用</string>
+    <string name="bottom_corner_gesture_title">底角手势</string>
+    <string name="bottom_corner_gesture_summary">从左下角向右上、或右下角向左上斜滑约 45 度，打开或关闭工作区。</string>
 </resources>
